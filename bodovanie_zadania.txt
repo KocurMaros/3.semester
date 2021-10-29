@@ -1,0 +1,17 @@
+Riesena uloha: student si vymysli sam.
+
+Struktura zadania: 1 server, 4 klienti (procesy) - minimalne dvaja klienti komunikuju so serverom cez socket.
+
+Bodovanie zadania:
+Sokety 8b
+Vlakna 8b
+Procesy 8b
+IPC1 (rury, fronty sprav, zdielana pamat) 8b 
+IPC2 (signaly, semafory) 8b 
+Casovac 8b 
+Makefile 2b 
+Dokumentacia 0b - povinna (staci 1x A4) (co program robi, ako ho skompilujeme, ako ho spustime, ako ho ovladame)
+
+Spoluu 50b, na zapocet minimalne 25b.
+
+
