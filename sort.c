@@ -5,8 +5,24 @@
 #include<sys/ipc.h>
 #include<sys/shm.h>
 
+#include<pthread.h>
+
 #define SHSIZE 1024
 #define KEY 1603
+
+void actually_sorting(int *start, size_t lenght);
+void merge_sort_mt(int *start, size_t len, int depth);
+void *merge_sort_thread(void *pv);
+void merge(int *start,int *mid,int *end);
+
+struct Params
+{
+    int *start;
+    size_t len;
+    int depth;
+};
+//for synchronizing stdout from overlap
+pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 
 int main(){
     int shmid;
@@ -43,12 +59,64 @@ int main(){
         i+=c;
         buff[g++] = atoi(temp); 
     }
-    
+    printf("NOT SORTED:\n");
     for(int i=0;i<g;i++)
-        printf("%d ", buff[i]);
+        printf("%d ", buff[i]);  
     printf("\n");
 
-
+    actually_sorting(buff,g);
+    printf("Sorted:\n");
+    for(int i=0;i<g;i++)
+        printf("%d ", buff[i]);  
+    printf("\n");
     *shm = '*'; //end message
     return 0;
+}
+void actually_sorting(int *start, size_t lenght){
+    merge_sort_mt(start,lenght,4); // ll use 7 threads
+}
+void merge_sort_mt(int *start, size_t len, int depth){
+
+    if(len < 2)
+        return;
+    if(depth <=0 || len < 4){
+        merge_sort_mt(start, len/2, 0);
+        merge_sort_mt(start+len/2, len-len/2, 0);
+    }
+    else{
+        struct Params params = {start, len/2, depth/2};
+        pthread_t thrd;
+        pthread_mutex_lock(&mtx);
+        printf("Starting subthread...\n");
+        pthread_mutex_unlock(&mtx);
+
+        pthread_create(&thrd, NULL, merge_sort_thread, &params);
+
+        merge_sort_mt(start+len/2, len-len/2, depth/2);
+
+        pthread_join(thrd, NULL);
+
+        pthread_mutex_lock(&mtx);
+        printf("Finished subthread.\n");
+        pthread_mutex_unlock(&mtx);
+    }
+    merge(start, start+len/2, start+len);
+}
+
+void *merge_sort_thread(void *pv){
+    struct Params *params = pv;
+    merge_sort_mt(params->start, params->len, params->depth);
+    return pv;
+}
+void merge(int *start, int *mid, int *end){
+    int *res = malloc((end - start)*sizeof(*res));
+    int *lhs = start, *rhs = mid, *dst = res;
+
+    while(lhs != mid && rhs != end)
+        *dst++ = (*lhs < *rhs) ? *lhs++ : *rhs++;
+    while(lhs != mid)
+        *dst++ = *lhs++;
+
+    memcpy(start, res, (rhs-start)*sizeof *res);
+    free(res);
 }
