@@ -33,6 +33,8 @@ int main(){
         perror("Error in connection");
         exit(1);
     }
+    recv(client_socket,buff,1024,0);
+    printf("Server:\t%s\n",buff);
     while(1){
         printf("Client:\t");
         scanf("%s",&buff[0]);
