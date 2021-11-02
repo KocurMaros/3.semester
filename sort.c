@@ -29,7 +29,6 @@ int main(){
     key_t key;
     key = KEY;
     char *shm;
-    char *s;
     printf("From shared memory:\t");
     shmid = shmget(key, SHSIZE, 0666);
     if(shmid < 0){
@@ -59,16 +58,73 @@ int main(){
         i+=c;
         buff[g++] = atoi(temp); 
     }
-    printf("NOT SORTED:\n");
-    for(int i=0;i<g;i++)
-        printf("%d ", buff[i]);  
-    printf("\n");
+    // printf("NOT SORTED:\n");
+    // for(int i=0;i<g;i++)
+    //     printf("%d ", buff[i]);  
+    // printf("\n");
 
     actually_sorting(buff,g);
-    printf("Sorted:\n");
-    for(int i=0;i<g;i++)
-        printf("%d ", buff[i]);  
-    printf("\n");
+    // printf("Sorted:\n");
+    // for(int i=0;i<g;i++)
+    //     printf("%d ", buff[i]);
+    int num;
+    c=0;
+    shm[c++] = '[';
+    for(int i=0;i<g;i++){ //
+        num = buff[i];
+        if(num > 0){
+            if(num>10000){
+                shm[c++] = '0' + num/10000;
+                num -= (num/10000)*10000;
+            }
+            if(num >= 1000){
+                shm[c++] = '0' + num/1000;
+                num -= (num/1000)*1000;
+            }
+            if(num >= 100){
+                shm[c++] = '0' + num/100;
+                num -= (num/100)*100;
+            }
+            if(num >= 10){
+                shm[c++] = '0' + num/10;
+                num -= (num/10)*10;
+            } 
+            if(num >= 1){
+                shm[c++] = '0' + num;
+                num -= num;
+            }
+        }
+        else{
+            shm[c++]='-';
+            num*=-1;
+            if(num>10000){
+                shm[c++] = '0' + num/10000;
+                num -= (num/10000)*10000;
+            }
+            if(num >= 1000){
+                shm[c++] = '0' + num/1000;
+                num -= (num/1000)*1000;
+            }
+            if(num >= 100){
+                shm[c++] = '0' + num/100;
+                num -= (num/100)*100;
+            }
+            if(num >= 10){
+                shm[c++] = '0' + num/10;
+                num -= (num/10)*10;
+            } 
+            if(num >= 1){
+                shm[c++] = '0' + num;
+                num -= num;
+            }
+        }
+        if(i!=g-1)
+            shm[c++]=',';
+        else
+            shm[c++]=']';
+    }  
+    for(int i=0;i<lenght;i++)
+        printf("%c",shm[i]);
     *shm = '*'; //end message
     return 0;
 }
@@ -91,7 +147,7 @@ void merge_sort_mt(int *start, size_t len, int depth){
         pthread_mutex_unlock(&mtx);
 
         pthread_create(&thrd, NULL, merge_sort_thread, &params);
-
+        
         merge_sort_mt(start+len/2, len-len/2, depth/2);
 
         pthread_join(thrd, NULL);
