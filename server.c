@@ -20,12 +20,12 @@ void merge_sort_mt(int *start, size_t len, int depth);
 void *merge_sort_thread(void *pv);
 void merge(int *start,int *mid,int *end);
 
-struct Parameters
+struct Parameters //for threading 
 {
     char *start;
     size_t len;
 };
-struct Params
+struct Params //for sorting
 {
     int *start;
     size_t len;
@@ -99,6 +99,12 @@ int main(){
 
 void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thready na sort a pipy na vypis || shared memory 
     buff[lenght]='\0';
+    int fd[2];
+    if(pipe(fd)<0){
+        perror("pipe");
+        exit(1);
+    }
+    char inbuff[1024];
     if(buff[0] == '[' && buff[lenght-1]==']'){
         struct Parameters parameters = {buff, lenght};
         pthread_t thrd;
@@ -107,22 +113,22 @@ void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thre
         
         pthread_join(thrd,NULL);
         
-        //sort(buff,lenght,socket); 
         buff[lenght-1]=']';
-        send(socket, buff,lenght,0);
-        for(int i=0;i<lenght;i++)
-            printf("%c",buff[i]);
+        send(socket, buff,lenght,0);  //pipes 4fun
+        write(fd[1],buff,lenght);
+        // for(int i=0;i<lenght;i++)
+        //     printf("%c",buff[i]);
         pthread_mutex_lock(&mtx);
             printf("\n[+]mutex done \n");
         pthread_mutex_unlock(&mtx);
-        
+        read(fd[0],inbuff,1024);
+        printf("Pipes for live: %s\n",inbuff);
         
     }
     else{
         printf("Client:\t%s\n",buff);
         send(socket,"done\0",5,0);
     }
-    //send(socket,buff,strlen(buff),0);
     
 }
 /*
