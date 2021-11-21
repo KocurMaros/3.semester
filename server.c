@@ -6,19 +6,22 @@
 #include <arpa/inet.h> 
 #include <unistd.h> 
 
-#include<sys/types.h>
-#include<sys/ipc.h>
-#include<sys/shm.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
-#include<time.h>
-#include<pthread.h>
+#include <time.h>
+#include <pthread.h>
+#include <signal.h>
 
 #define PORT 7777
 
-void actually_sorting(int *start, size_t lenght);
-void merge_sort_mt(int *start, size_t len, int depth);
-void *merge_sort_thread(void *pv);
-void merge(int *start,int *mid,int *end);
+void actually_sorting(int *, size_t);
+void merge_sort_mt(int *, size_t, int);
+void *merge_sort_thread(void *);
+void merge(int *,int *,int *);
+timer_t created_timer(int);
+void start_timer(timer_t, int);
 
 struct Parameters //for threading 
 {
@@ -36,6 +39,8 @@ void *sorting(void *pv);
 void response_from_client();
 void *merge_sort_thread(void *pv);
 void sort();
+void kell(int);
+
 int main(){
     int server_socket;
     struct sockaddr_in server_address;
@@ -47,6 +52,9 @@ int main(){
     char buff[1024];
     char welcome_messagge[128] = "Welcome on sorting algoritmus server, if you want to sort number please insert numbers in [] and separate wit ','";
     pid_t childpid;
+
+    timer_t timer;
+    int online=0,cas=0;
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if(server_socket < 0)
@@ -69,14 +77,15 @@ int main(){
     int addr_len;
     while(1){
         addr_len = sizeof(new_address);
-        new_socket = accept(server_socket,(struct sockaddr*)&new_address, &addr_len);
+        new_socket = accept(server_socket,(struct sockaddr*)&new_address, &addr_len); 
+        online++;
         if(new_socket < 0 ){
             perror("Socket create error");
             exit(1);
         }
         printf("Connection accept from %s:%d\n",inet_ntoa(new_address.sin_addr),ntohs(new_address.sin_port));
         send(new_socket,welcome_messagge,128,0);
-        if((childpid = fork()) == 0){  //precesy
+        if((childpid = fork()) != 0){  //precesy
             close(server_socket);
             int len;
             while(1){
@@ -84,6 +93,7 @@ int main(){
                 len=recv(new_socket, &buff, 1024, 0);
                 if(strcmp(buff, ":exit") == 0){
                     printf("Disconnected from %s:%d\n",inet_ntoa(new_address.sin_addr),ntohs(new_address.sin_port));
+                    online--;
                     break;
                 }
                 else{
@@ -91,12 +101,25 @@ int main(){
                     bzero(buff,sizeof(buff));
                 }
             }
+            signal(SIGUSR1,kell);
+            // if(online == 0 && cas == 0){
+                timer=created_timer(SIGUSR1);
+                // cas = 1;
+                start_timer(timer, 3);
+            // }
+            // else if(cas == 1 && online != 0){
+            //     timer_delete(timer);
+            //     printf("[+] vyplo casovac");
+            // }
         }
+        
     }
     close(new_socket);
     return 0;
 }
-
+void kell(int a){
+    exit(1);
+}
 void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thready na sort a pipy na vypis || shared memory 
     buff[lenght]='\0';
     int fd[2];
@@ -114,16 +137,18 @@ void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thre
         pthread_join(thrd,NULL);
         
         buff[lenght-1]=']';
-        send(socket, buff,lenght,0);  //pipes 4fun
-        write(fd[1],buff,lenght);
+        buff[lenght-1]='\0';
+        send(socket, buff,lenght,0);  
+        write(fd[1],buff,lenght);  //pipes 4fun
         // for(int i=0;i<lenght;i++)
         //     printf("%c",buff[i]);
         pthread_mutex_lock(&mtx);
             printf("\n[+]mutex done \n");
         pthread_mutex_unlock(&mtx);
-        read(fd[0],inbuff,1024);
+        read(fd[0],inbuff,lenght);
         printf("Pipes for live: %s\n",inbuff);
-        
+        close(fd[0]);
+        close(fd[1]);
     }
     else{
         printf("Client:\t%s\n",buff);
@@ -131,76 +156,6 @@ void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thre
     }
     
 }
-/*
-#define SHSIZE 1024
-#define KEY 1603
-
-void sort(char buff[],int lenght,int socket){ //shared memory
-    int shmid;
-    key_t key;
-    key = KEY;
-    char *shm;
-
-    shmid = shmget(key, SHSIZE, IPC_CREAT | 0666);
-    if(shmid < 0){
-        perror("shmget");
-        exit(1);
-    }
-    shm = shmat(shmid, NULL, 0);
-
-    if(shm == (char *) -1){
-        perror("shmat");
-        exit(1);
-    }
-    memcpy(shm, buff, lenght+1);
-    system("./sort");
-    sleep(1);  //zeby stihlo sortnut srandy
-    strcpy(buff,shm);
-    buff[0]='[';
-    send(socket,buff,strlen(buff),0);
-    // shm = shmat(shmid, NULL, 0);
-    
-    printf("execute done\n");
-    while(*shm != '*'){
-        sleep(1);
-    }
-}
-
-void *sorting(void *pv){
-    struct Parameters *parameters = pv;
-    int shmid;
-    key_t key;
-    key = KEY;
-    char *shm;
-
-    shmid = shmget(key, SHSIZE, IPC_CREAT | 0666);
-    if(shmid < 0){
-        perror("shmget");
-        exit(1);
-    }
-    shm = shmat(shmid, NULL, 0);
-
-    if(shm == (char *) -1){
-        perror("shmat");
-        exit(1);
-    }
-    memcpy(shm, parameters->start, parameters->len);
-    
-    system("./sort");
-    while(*shm != '*'){
-        sleep(1);
-    }
-    char buff[1024];
-    int i;
-    for(i=0;i<parameters->len;i++){
-        buff[i]=shm[i];
-        printf("%c",buff[i]);
-    }
-    buff[i]='\0';
-    *shm = NULL;
-    send(parameters->socket,buff,parameters->len,0);
-}
-*/
 void *sorting(void *pv){
     struct Parameters *parameters = pv;
     //pipe for vypis 
@@ -241,19 +196,12 @@ void merge_sort_mt(int *start, size_t len, int depth){
     else{
         struct Params params = {start, len/2, depth/2};
         pthread_t thrd;
-        // pthread_mutex_lock(&mtx);
-        // printf("Starting subthread...\n");
-        // pthread_mutex_unlock(&mtx);
 
         pthread_create(&thrd, NULL, merge_sort_thread, &params);
         
         merge_sort_mt(start+len/2, len-len/2, depth/2);
 
         pthread_join(thrd, NULL);
-
-        // pthread_mutex_lock(&mtx);
-        // printf("Finished subthread.\n");
-        // pthread_mutex_unlock(&mtx);
     }
     merge(start, start+len/2, start+len);
 }
@@ -274,4 +222,22 @@ void merge(int *start, int *mid, int *end){
 
     memcpy(start, res, (rhs-start)*sizeof *res);
     free(res);
+}
+
+timer_t created_timer(int signal){
+    struct sigevent sig;
+    sig.sigev_notify = SIGEV_SIGNAL;
+    sig.sigev_signo = signal;
+    timer_t timer;
+    timer_create(CLOCK_REALTIME, &sig, &timer);
+    return(timer);
+}
+void start_timer(timer_t timer, int sec){
+    struct itimerspec time;
+    time.it_value.tv_sec=sec;
+    time.it_value.tv_nsec=0;
+    time.it_interval.tv_sec=0;
+    time.it_interval.tv_nsec=0;
+    timer_settime(timer,CLOCK_REALTIME,&time,NULL);
+    printf("[+] zaplo casovac\n");
 }
