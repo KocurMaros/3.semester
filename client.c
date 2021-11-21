@@ -39,7 +39,7 @@ int main(){
         printf("Client:\t");
         scanf("%s",&buff[0]);
         send(client_socket,buff,strlen(buff),0);
-        if(strcmp(buff, ":exit") == 0){
+        if(strcmp(buff, ":e") == 0){
             close(client_socket);
             exit(1);
         }

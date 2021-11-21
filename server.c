@@ -1,6 +1,7 @@
 #include <sys/socket.h>  
 #include <netinet/in.h>  
 #include <stdio.h>  
+#include <stdbool.h>
 #include <string.h> 
 #include <stdlib.h>  
 #include <arpa/inet.h> 
@@ -22,7 +23,11 @@ void *merge_sort_thread(void *);
 void merge(int *,int *,int *);
 timer_t created_timer(int);
 void start_timer(timer_t, int);
-
+bool shutdown_sginal = false;
+void *shut(){
+    printf("shutdown signal");
+    shutdown_sginal = true;
+}
 struct Parameters //for threading 
 {
     char *start;
@@ -50,11 +55,8 @@ int main(){
     socklen_t addr_size;
     
     char buff[1024];
-    char welcome_messagge[128] = "Welcome on sorting algoritmus server, if you want to sort number please insert numbers in [] and separate wit ','";
-    pid_t childpid;
-
-    timer_t timer;
-    int online=0,cas=0;
+    char welcome_messagge[128] = "Welcome on sorting algoritmus server,if you want to sort number please insert numbers in [] and separate with ','";
+    pid_t pid;
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if(server_socket < 0)
@@ -75,25 +77,28 @@ int main(){
     else
         perror("error in binding");
     int addr_len;
+    int cas=0, online = 0;
+    timer_t timer;
     while(1){
         addr_len = sizeof(new_address);
         new_socket = accept(server_socket,(struct sockaddr*)&new_address, &addr_len); 
-        online++;
+        online+=2;
         if(new_socket < 0 ){
             perror("Socket create error");
             exit(1);
         }
         printf("Connection accept from %s:%d\n",inet_ntoa(new_address.sin_addr),ntohs(new_address.sin_port));
         send(new_socket,welcome_messagge,128,0);
-        if((childpid = fork()) != 0){  //precesy
+        if((pid = fork()) == 0){  //precesy
             close(server_socket);
             int len;
             while(1){
                 bzero(buff,sizeof(buff));
                 len=recv(new_socket, &buff, 1024, 0);
-                if(strcmp(buff, ":exit") == 0){
-                    printf("Disconnected from %s:%d\n",inet_ntoa(new_address.sin_addr),ntohs(new_address.sin_port));
+                if(strcmp(buff, ":e") == 0){
                     online--;
+                    close(new_socket);
+                    printf("Disconnected from %s:%d\n",inet_ntoa(new_address.sin_addr),ntohs(new_address.sin_port));
                     break;
                 }
                 else{
@@ -101,25 +106,30 @@ int main(){
                     bzero(buff,sizeof(buff));
                 }
             }
-            signal(SIGUSR1,kell);
-            // if(online == 0 && cas == 0){
-                timer=created_timer(SIGUSR1);
-                // cas = 1;
-                start_timer(timer, 3);
-            // }
-            // else if(cas == 1 && online != 0){
-            //     timer_delete(timer);
-            //     printf("[+] vyplo casovac");
-            // }
+            
         }
+        online--;
         
+        if(cas == 0 && online == 0){
+           
+            printf("start time \n");
+            cas = 1;
+            signal(SIGUSR1, shut);
+            timer = created_timer(SIGUSR1);
+            start_timer(timer, 1);
+        }
+        else if(online > 0 && cas == 1){
+            cas = 0;
+            timer_delete(timer);
+        }
+        printf("%d %d\n",cas, online);
+        if(shutdown_sginal)
+            kill(pid, SIGKILL);
     }
     close(new_socket);
     return 0;
 }
-void kell(int a){
-    exit(1);
-}
+
 void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thready na sort a pipy na vypis || shared memory 
     buff[lenght]='\0';
     int fd[2];
@@ -128,25 +138,32 @@ void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thre
         exit(1);
     }
     char inbuff[1024];
+    bzero(inbuff, 1024);
+    clock_t t;
     if(buff[0] == '[' && buff[lenght-1]==']'){
         struct Parameters parameters = {buff, lenght};
         pthread_t thrd;
-
+        t = clock();
         pthread_create(&thrd, NULL, sorting, &parameters);
         
         pthread_join(thrd,NULL);
         
         buff[lenght-1]=']';
-        buff[lenght-1]='\0';
+        buff[lenght]='\0';
         send(socket, buff,lenght,0);  
+        t = clock()-t;
+        double time_taken = ((double)t)/CLOCKS_PER_SEC;
+        printf("Sort took %f sec\n",time_taken);
         write(fd[1],buff,lenght);  //pipes 4fun
-        // for(int i=0;i<lenght;i++)
-        //     printf("%c",buff[i]);
+        
         pthread_mutex_lock(&mtx);
             printf("\n[+]mutex done \n");
+            read(fd[0],inbuff,lenght+1);
+            int i=0;
+            while(inbuff[i]!='\0')
+                printf("%c",inbuff[i++]);
+            printf("\n");
         pthread_mutex_unlock(&mtx);
-        read(fd[0],inbuff,lenght);
-        printf("Pipes for live: %s\n",inbuff);
         close(fd[0]);
         close(fd[1]);
     }
@@ -228,16 +245,16 @@ timer_t created_timer(int signal){
     struct sigevent sig;
     sig.sigev_notify = SIGEV_SIGNAL;
     sig.sigev_signo = signal;
-    timer_t timer;
+
+    timer_t timer; 
     timer_create(CLOCK_REALTIME, &sig, &timer);
     return(timer);
 }
 void start_timer(timer_t timer, int sec){
-    struct itimerspec time;
-    time.it_value.tv_sec=sec;
-    time.it_value.tv_nsec=0;
-    time.it_interval.tv_sec=0;
-    time.it_interval.tv_nsec=0;
-    timer_settime(timer,CLOCK_REALTIME,&time,NULL);
-    printf("[+] zaplo casovac\n");
+    struct itimerspec tim;
+    tim.it_value.tv_sec = sec;
+    tim.it_value.tv_nsec = 0;
+    tim.it_interval.tv_sec = sec;
+    tim.it_interval.tv_nsec = 0;
+    timer_settime(timer, CLOCK_REALTIME, &tim,  NULL);
 }
