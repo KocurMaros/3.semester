@@ -24,10 +24,7 @@ void merge(int *,int *,int *);
 timer_t created_timer(int);
 void start_timer(timer_t, int);
 bool shutdown_sginal = false;
-void *shut(){
-    printf("shutdown signal");
-    shutdown_sginal = true;
-}
+
 struct Parameters //for threading 
 {
     char *start;
@@ -39,18 +36,33 @@ struct Params //for sorting
     size_t len;
     int depth;
 };
+int p;
 pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 void *sorting(void *pv);
 void response_from_client();
 void *merge_sort_thread(void *pv);
 void sort();
-void kell(int);
-
+void *incrementation(){
+    for(int i=0;i<1000000;i++){
+        pthread_mutex_lock(&mtx);
+        p++;
+        pthread_mutex_unlock(&mtx);
+    }
+}
+void *up(int a){
+    printf("Nobody connected last 10 sec\n");
+}
+void *end(){
+    int a;
+    scanf("%d",&a);
+    if(a == 69)
+       exit(1); 
+}
 int main(){
     int server_socket;
     struct sockaddr_in server_address;
-    
-    int new_socket;
+
+   
     struct sockaddr_in new_address;
     socklen_t addr_size;
     
@@ -67,7 +79,14 @@ int main(){
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(PORT);
     server_address.sin_addr.s_addr = inet_addr("127.0.0.1");
-
+    
+    timer_t timer;
+    if(signal(SIGINT, up) == SIG_ERR)
+        printf("cant catch sigint\n");
+    timer = created_timer(SIGINT);
+    pthread_t end_tid;
+    pthread_create(&end_tid, NULL, end, NULL);
+    int new_socket;
     int ret = bind(server_socket,(struct sockaddr*)&server_address,sizeof(server_address));
     if(ret<0)
         perror("Error in binding");
@@ -77,12 +96,12 @@ int main(){
     else
         perror("error in binding");
     int addr_len;
-    int cas=0, online = 0;
-    timer_t timer;
     while(1){
         addr_len = sizeof(new_address);
+        timer = created_timer(SIGINT);
+        start_timer(timer,10);
         new_socket = accept(server_socket,(struct sockaddr*)&new_address, &addr_len); 
-        online+=2;
+        timer_delete(timer);
         if(new_socket < 0 ){
             perror("Socket create error");
             exit(1);
@@ -96,7 +115,6 @@ int main(){
                 bzero(buff,sizeof(buff));
                 len=recv(new_socket, &buff, 1024, 0);
                 if(strcmp(buff, ":e") == 0){
-                    online--;
                     close(new_socket);
                     printf("Disconnected from %s:%d\n",inet_ntoa(new_address.sin_addr),ntohs(new_address.sin_port));
                     break;
@@ -108,23 +126,6 @@ int main(){
             }
             
         }
-        online--;
-        
-        if(cas == 0 && online == 0){
-           
-            printf("start time \n");
-            cas = 1;
-            signal(SIGUSR1, shut);
-            timer = created_timer(SIGUSR1);
-            start_timer(timer, 1);
-        }
-        else if(online > 0 && cas == 1){
-            cas = 0;
-            timer_delete(timer);
-        }
-        printf("%d %d\n",cas, online);
-        if(shutdown_sginal)
-            kill(pid, SIGKILL);
     }
     close(new_socket);
     return 0;
@@ -142,12 +143,12 @@ void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thre
     clock_t t;
     if(buff[0] == '[' && buff[lenght-1]==']'){
         struct Parameters parameters = {buff, lenght};
-        pthread_t thrd;
+        pthread_t tid1,tid2,tid3;
         t = clock();
-        pthread_create(&thrd, NULL, sorting, &parameters);
-        
-        pthread_join(thrd,NULL);
-        
+        pthread_mutex_init(&mtx,NULL);
+        pthread_create(&tid1, NULL, sorting, &parameters);
+        pthread_join(tid1,NULL);
+        printf("2000000 = %d\n",p);
         buff[lenght-1]=']';
         buff[lenght]='\0';
         send(socket, buff,lenght,0);  
@@ -156,19 +157,24 @@ void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thre
         printf("Sort took %f sec\n",time_taken);
         write(fd[1],buff,lenght);  //pipes 4fun
         
-        pthread_mutex_lock(&mtx);
-            printf("\n[+]mutex done \n");
-            read(fd[0],inbuff,lenght+1);
-            int i=0;
-            while(inbuff[i]!='\0')
-                printf("%c",inbuff[i++]);
-            printf("\n");
-        pthread_mutex_unlock(&mtx);
+        read(fd[0],inbuff,lenght+1);
+        int i=0;
+        while(inbuff[i]!='\0')
+            printf("%c",inbuff[i++]);
+        printf("\n");
         close(fd[0]);
         close(fd[1]);
+        pthread_mutex_destroy(&mtx);
     }
     else{
         printf("Client:\t%s\n",buff);
+        pthread_t tid2,tid3;
+        p=0;
+        pthread_create(&tid2, NULL, incrementation, NULL);
+        pthread_create(&tid3, NULL, incrementation, NULL);
+        pthread_join(tid2,NULL);
+        pthread_join(tid3,NULL);
+        printf("2000000 = %d\n",p);
         send(socket,"done\0",5,0);
     }
     
@@ -257,4 +263,5 @@ void start_timer(timer_t timer, int sec){
     tim.it_interval.tv_sec = sec;
     tim.it_interval.tv_nsec = 0;
     timer_settime(timer, CLOCK_REALTIME, &tim,  NULL);
+    printf("timer started\n");
 }
