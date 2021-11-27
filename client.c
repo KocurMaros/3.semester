@@ -7,8 +7,6 @@
 #include <unistd.h> 
 
 #define PORT 7777
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
 int main(){
 
     int client_socket;
@@ -28,7 +26,7 @@ int main(){
     int ret;
     int addr_len;
     addr_len = sizeof(server_address);
-    ret = connect(client_socket, (struct socketaddr*)&server_address, addr_len);
+    ret = connect(client_socket, (struct sockaddr*)&server_address, addr_len);
     if(ret < 0){
         perror("Error in connection");
         exit(1);
@@ -50,4 +48,3 @@ int main(){
     }
     return 0;
 }
-#pragma GCC diagnostic pop

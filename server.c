@@ -18,9 +18,11 @@
 #define PORT 7777
 
 void actually_sorting(int *, size_t);
-void merge_sort_mt(int *, size_t, int);
-void *merge_sort_thread(void *);
-void merge(int *,int *,int *);
+// void merge_sort_mt(int *, size_t, int);
+// void *merge_sort_thread(void *);
+void merge(int *, int, int, int);
+void merge_sort(int *, int, int);
+// void merge(int *,int *,int *);
 timer_t created_timer(int);
 void start_timer(timer_t, int);
 bool shutdown_sginal = false;
@@ -30,12 +32,13 @@ struct Parameters //for threading
     char *start;
     size_t len;
 };
-struct Params //for sorting
-{
-    int *start;
-    size_t len;
-    int depth;
-};
+// struct Params //for sorting
+// {
+//     int *start;
+//     size_t len;
+//     int depth;
+// };
+
 int p;
 pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 void *sorting(void *pv);
@@ -49,7 +52,7 @@ void *incrementation(){
         pthread_mutex_unlock(&mtx);
     }
 }
-void *up(int a){
+void up(int a){
     printf("Nobody connected last 10 sec\n");
 }
 void *end(){
@@ -143,12 +146,10 @@ void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thre
     clock_t t;
     if(buff[0] == '[' && buff[lenght-1]==']'){
         struct Parameters parameters = {buff, lenght};
-        pthread_t tid1,tid2,tid3;
+        pthread_t tid1;
         t = clock();
-        pthread_mutex_init(&mtx,NULL);
         pthread_create(&tid1, NULL, sorting, &parameters);
         pthread_join(tid1,NULL);
-        printf("2000000 = %d\n",p);
         buff[lenght-1]=']';
         buff[lenght]='\0';
         send(socket, buff,lenght,0);  
@@ -164,21 +165,24 @@ void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thre
         printf("\n");
         close(fd[0]);
         close(fd[1]);
-        pthread_mutex_destroy(&mtx);
+        
     }
     else{
         printf("Client:\t%s\n",buff);
         pthread_t tid2,tid3;
         p=0;
+        pthread_mutex_init(&mtx,NULL);
         pthread_create(&tid2, NULL, incrementation, NULL);
         pthread_create(&tid3, NULL, incrementation, NULL);
         pthread_join(tid2,NULL);
         pthread_join(tid3,NULL);
         printf("2000000 = %d\n",p);
         send(socket,"done\0",5,0);
+        pthread_mutex_destroy(&mtx);
     }
     
 }
+
 void *sorting(void *pv){
     struct Parameters *parameters = pv;
     //pipe for vypis 
@@ -195,9 +199,12 @@ void *sorting(void *pv){
             temp[j]=s[i+j];
         temp[j]='\0';
         i+=c;
-        buff[g++] = atoi(temp); 
+        buff[g] = atoi(temp); 
+        printf("%d ",buff[g++]);
     }
-    actually_sorting(buff,g);
+    printf("\n");
+    // actually_sorting(buff,g);
+    merge_sort(buff, 0, g-1);
     strcpy(s, "[");
     for(int i=0;i<(sizeof(buff)/sizeof(int))-1;i++)
         sprintf(&s[strlen(s)],"%d,",buff[i]);
@@ -205,7 +212,50 @@ void *sorting(void *pv){
     strcat(s,"]");
     strcat(s,"\0");
 }
-void actually_sorting(int *start, size_t lenght){
+void merge(int arr[], int l, int m, int r) { 
+	int i, j, k; 
+	int n1 = m - l + 1; 
+	int n2 =  r - m; 
+	int L[n1], R[n2]; 
+	for (i = 0; i < n1; i++) 
+		L[i] = arr[l + i]; 
+	for (j = 0; j < n2; j++) 
+		R[j] = arr[m + 1+ j]; 
+	i = 0; 
+	j = 0; 
+	k = l; 
+	while (i < n1 && j < n2) { 
+		if (L[i] <= R[j]) { 
+		arr[k] = L[i]; 
+		i++; 
+		} 
+		else{ 
+		arr[k] = R[j]; 
+		j++; 
+		} 
+		k++; 
+	} 
+	while (i < n1) { 
+		arr[k] = L[i]; 
+		i++; 
+		k++; 
+	} 
+	while (j < n2){ 
+	arr[k] = R[j]; 
+	j++; 
+	k++; 
+	} 
+}
+// Merge Sort Function in C 
+void merge_sort(int arr[], int l, int r) { 
+	if (l < r) { 
+	int m = l+(r-l)/2; 
+		merge_sort(arr, l, m); 
+		merge_sort(arr, m+1, r); 
+		merge(arr, l, m, r); 
+	} 
+} 
+/*void actually_sorting(int *start, size_t lenght){
     merge_sort_mt(start,lenght,4); // ll use 7 threads
 }
 void merge_sort_mt(int *start, size_t len, int depth){
@@ -246,6 +296,7 @@ void merge(int *start, int *mid, int *end){
     memcpy(start, res, (rhs-start)*sizeof *res);
     free(res);
 }
+*/
 
 timer_t created_timer(int signal){
     struct sigevent sig;
