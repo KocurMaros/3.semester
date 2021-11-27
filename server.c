@@ -263,5 +263,4 @@ void start_timer(timer_t timer, int sec){
     tim.it_interval.tv_sec = sec;
     tim.it_interval.tv_nsec = 0;
     timer_settime(timer, CLOCK_REALTIME, &tim,  NULL);
-    printf("timer started\n");
 }
