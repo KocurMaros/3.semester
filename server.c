@@ -137,6 +137,7 @@ int main(){
 void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thready na sort a pipy na vypis || shared memory 
     buff[lenght]='\0';
     int fd[2];
+    pid_t pid;
     if(pipe(fd)<0){
         perror("pipe");
         exit(1);
@@ -144,41 +145,50 @@ void response_from_client(int socket,char *buff,int lenght){ //zde pouzijem thre
     char inbuff[1024];
     bzero(inbuff, 1024);
     clock_t t;
-    if(buff[0] == '[' && buff[lenght-1]==']'){
-        struct Parameters parameters = {buff, lenght};
-        pthread_t tid1;
-        t = clock();
-        pthread_create(&tid1, NULL, sorting, &parameters);
-        pthread_join(tid1,NULL);
-        buff[lenght-1]=']';
-        buff[lenght]='\0';
-        send(socket, buff,lenght,0);  
-        t = clock()-t;
-        double time_taken = ((double)t)/CLOCKS_PER_SEC;
-        printf("Sort took %f sec\n",time_taken);
-        write(fd[1],buff,lenght);  //pipes 4fun
-        
+    if((pid = fork())==0){
+        if(buff[0] == '[' && buff[lenght-1]==']'){
+            struct Parameters parameters; //= {buff, lenght};
+            parameters.len = lenght;
+            parameters.start = buff;
+            pthread_t tid1;
+            t = clock();
+            pthread_create(&tid1, NULL, sorting, &parameters);
+            pthread_join(tid1,NULL);
+            buff[lenght-1]=']';
+            buff[lenght]='\0';
+            send(socket, buff,lenght,0);  
+            t = clock()-t;
+            double time_taken = ((double)t)/CLOCKS_PER_SEC;
+            printf("Sort took %f sec\n",time_taken);
+            write(fd[1],buff,lenght);  //pipes 4fun
+            close(fd[0]);
+            
+        }
+        else{
+            printf("Client:\t%s\n",buff);
+            pthread_t tid2,tid3;
+            p=0;
+            pthread_mutex_init(&mtx,NULL);
+            pthread_create(&tid2, NULL, incrementation, NULL);
+            pthread_create(&tid3, NULL, incrementation, NULL);
+            pthread_join(tid2,NULL);
+            pthread_join(tid3,NULL);
+            printf("2000000 = %d\n",p);
+            send(socket,"done\0",5,0);
+            pthread_mutex_destroy(&mtx);
+        }
+    }
+    else{
         read(fd[0],inbuff,lenght+1);
         int i=0;
         while(inbuff[i]!='\0')
             printf("%c",inbuff[i++]);
         printf("\n");
-        close(fd[0]);
         close(fd[1]);
-        
-    }
-    else{
-        printf("Client:\t%s\n",buff);
-        pthread_t tid2,tid3;
-        p=0;
-        pthread_mutex_init(&mtx,NULL);
-        pthread_create(&tid2, NULL, incrementation, NULL);
-        pthread_create(&tid3, NULL, incrementation, NULL);
-        pthread_join(tid2,NULL);
-        pthread_join(tid3,NULL);
-        printf("2000000 = %d\n",p);
-        send(socket,"done\0",5,0);
-        pthread_mutex_destroy(&mtx);
+        int ret;
+        ret = kill(pid, SIGKILL);
+        if(ret == -1)
+            perror("kill");
     }
     
 }
